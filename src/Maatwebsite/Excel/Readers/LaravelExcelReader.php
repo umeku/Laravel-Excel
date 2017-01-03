@@ -96,6 +96,13 @@ class LaravelExcelReader
     public $calculate;
 
     /**
+     * Format rich text cells
+     *
+     * @var boolean
+     */
+    public $formatRichText = false;
+
+    /**
      * Limit data
      *
      * @var boolean
@@ -902,6 +909,20 @@ class LaravelExcelReader
     }
 
     /**
+     *  Set default rich text formatting
+     *
+     * @param bool $boolean Format rich text cells yes or no
+     *
+     * @return LaraveExcelReader
+     */
+    public function formatRichText($boolean = false)
+    {
+        $this->formatRichText = $boolean;
+
+        return $this;
+    }
+
+    /**
      * Ignore empty cells
      *
      * @param  boolean $boolean
@@ -973,6 +994,16 @@ class LaravelExcelReader
     public function needsCalculation()
     {
         return $this->calculate;
+    }
+
+    /**
+     * Check if we need to format rich text cells
+     *
+     * @return boolean
+     */
+    public function needsRichTextFormatting()
+    {
+        return $this->formatRichText;
     }
 
     /**

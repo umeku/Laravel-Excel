@@ -3,8 +3,11 @@
 use Carbon\Carbon;
 use PHPExcel_Cell;
 use PHPExcel_Exception;
+use PHPExcel_RichText;
+use PHPExcel_RichText_Run;
 use PHPExcel_Shared_Date;
 use Illuminate\Support\Str;
+use PHPExcel_Style_Font;
 use PHPExcel_Style_NumberFormat;
 use Maatwebsite\Excel\Collections\RowCollection;
 use Maatwebsite\Excel\Collections\CellCollection;
@@ -485,6 +488,13 @@ class ExcelParser {
             return $this->parseDate();
         }
 
+        // If the cell is Rich Text
+        elseif ( $this->cellIsRichText() )
+        {
+            // Parse the rich text formatting
+            return $this->parseRichText();
+        }
+
         // Check if we want calculated values or not
         elseif ( $this->reader->needsCalculation() )
         {
@@ -558,6 +568,27 @@ class ExcelParser {
     }
 
     /**
+     * Parse the rich text formatting
+     * @return string
+     */
+    protected function parseRichText()
+    {
+        // If the cell needs formatting preserved
+        if ( $this->reader->needsRichTextFormatting() )
+        {
+            // Parse the cell into HTML
+            $value = $this->parseCellAsHTML();
+        }
+        else
+        {
+            // Otherwise get the plain text value
+            $value = $this->cell->getFormattedValue();
+        }
+
+        return $this->encode($value);
+    }
+
+    /**
      * Parse and return carbon object or formatted time string
      * @return Carbon\Carbon
      */
@@ -596,6 +627,49 @@ class ExcelParser {
     }
 
     /**
+     * Return HTML from rich text cell
+     * @return string
+     */
+    protected function parseCellAsHTML()
+    {
+        if ($this->cell->getValue() instanceof PHPExcel_RichText) {
+            $cellData = '';
+            $elements = $this->cell->getValue()->getRichTextElements();
+
+            foreach ($elements as $element) {
+                // Rich text start?
+                if ($element instanceof PHPExcel_RichText_Run) {
+                    $cellData .= '<span style="' . $this->_assembleCSS($this->_createCSSStyleFont($element->getFont())) . '">';
+
+                    if ($element->getFont()->getSuperScript()) {
+                        $cellData .= '<sup>';
+                    } else if ($element->getFont()->getSubScript()) {
+                        $cellData .= '<sub>';
+                    }
+                }
+
+                // Convert UTF8 data to PCDATA
+                $cellText = $element->getText();
+                $cellData .= htmlspecialchars($cellText);
+
+                if ($element instanceof PHPExcel_RichText_Run) {
+                    if ($element->getFont()->getSuperScript()) {
+                        $cellData .= '</sup>';
+                    } else if ($element->getFont()->getSubScript()) {
+                        $cellData .= '</sub>';
+                    }
+
+                    $cellData .= '</span>';
+                }
+            }
+
+            return $cellData;
+        } else {
+            return (string) $this->cell->getValue();
+        }
+    }
+
+    /**
      * Check if cell is a date
      * @param  integer $index
      * @return boolean
@@ -611,6 +685,15 @@ class ExcelParser {
         {
             return PHPExcel_Shared_Date::isDateTime($this->cell);
         }
+    }
+
+    /**
+     * Check if cell contains rich text
+     * @return boolean
+     */
+    protected function cellIsRichText()
+    {
+        return $this->cell->getValue() instanceof PHPExcel_RichText;
     }
 
     /**
@@ -670,4 +753,54 @@ class ExcelParser {
         $this->indices = array();
         $this->isParsed = false;
     }
+
+    /**
+   	 * Takes array where of CSS properties / values and converts to CSS string
+   	 *
+   	 * @param array
+   	 * @return string
+   	 */
+   	protected function _assembleCSS($pValue = array())
+   	{
+   		$pairs = array();
+   		foreach ($pValue as $property => $value) {
+   			$pairs[] = $property . ':' . $value;
+   		}
+   		$string = implode('; ', $pairs);
+
+   		return $string;
+   	}
+
+    /**
+   	 * Create CSS style (PHPExcel_Style_Font)
+   	 *
+   	 * @param	PHPExcel_Style_Font		$pStyle			PHPExcel_Style_Font
+   	 * @return	array
+   	 */
+    protected function _createCSSStyleFont(PHPExcel_Style_Font $pStyle) {
+   		// Construct CSS
+   		$css = array();
+
+   		// Create CSS
+   		if ($pStyle->getBold()) {
+   			$css['font-weight'] = 'bold';
+   		}
+   		if ($pStyle->getUnderline() != PHPExcel_Style_Font::UNDERLINE_NONE && $pStyle->getStrikethrough()) {
+   			$css['text-decoration'] = 'underline line-through';
+   		} else if ($pStyle->getUnderline() != PHPExcel_Style_Font::UNDERLINE_NONE) {
+   			$css['text-decoration'] = 'underline';
+   		} else if ($pStyle->getStrikethrough()) {
+   			$css['text-decoration'] = 'line-through';
+   		}
+   		if ($pStyle->getItalic()) {
+   			$css['font-style'] = 'italic';
+   		}
+
+   		$css['color']		= '#' . $pStyle->getColor()->getRGB();
+   		$css['font-family']	= '\'' . $pStyle->getName() . '\'';
+   		$css['font-size']	= $pStyle->getSize() . 'pt';
+
+   		// Return
+   		return $css;
+   	}
 }
